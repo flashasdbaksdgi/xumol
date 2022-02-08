@@ -1,0 +1,132 @@
+diff --git a/model/cycle_utils.py b/model/cycle_utils.py
+index 213cf27..45a66ee 100644
+--- a/model/cycle_utils.py
++++ b/model/cycle_utils.py
+@@ -50,3 +50,3 @@ def align_coords_Kabsch(p_cycle_coords, q_cycle_coords, p_mask, q_mask=None):
+     d = torch.sign(torch.det(torch.matmul(v, u.permute(0, 1, 3, 2))))
+-    R_1 = torch.diag_embed(torch.ones([p_cycle_coords.size(0), q_cycle_coords.size(0), 3]))
++    R_1 = torch.diag_embed(torch.ones([p_cycle_coords.size(0), q_cycle_coords.size(0), 3]).to("cuda:0"))
+     R_1[:, :, 2, 2] = d
+diff --git a/model/inference.py b/model/inference.py
+index e626f2e..619408c 100644
+--- a/model/inference.py
++++ b/model/inference.py
+@@ -15,4 +15,4 @@ def construct_conformers(data, model):
+ 
+-    new_pos = torch.zeros([data.batch.size(0), model.n_model_confs, 3])
+-    dihedral_pairs = model.dihedral_pairs.t().detach().numpy()
++    new_pos = torch.zeros([data.batch.size(0), model.n_model_confs, 3]).to(device)
++    dihedral_pairs = model.dihedral_pairs.t().detach().cpu().numpy()
+ 
+@@ -82,3 +82,3 @@ def construct_conformers(data, model):
+         Sx.extend([x_index])
+-        Sx.extend(model.neighbors[x_index].detach().numpy())
++        Sx.extend(model.neighbors[x_index].detach().cpu().numpy())
+         Sx = list(set(Sx))
+@@ -86,3 +86,3 @@ def construct_conformers(data, model):
+         Sy.extend([y_index])
+-        Sy.extend(model.neighbors[y_index].detach().numpy())
++        Sy.extend(model.neighbors[y_index].detach().cpu().numpy())
+ 
+@@ -101,3 +101,3 @@ def construct_conformers(data, model):
+             q_coords = torch.zeros([4, model.n_model_confs, 3])
+-            q_reorder = np.argsort([np.where(a == q_idx)[0][0] for a in torch.tensor(cycle_avg_indices)[q_coords_mask]])
++            q_reorder = np.argsort([np.where((a == q_idx).cpu())[0][0] for a in torch.tensor(cycle_avg_indices).to(device)[q_coords_mask]])
+             q_coords[0:sum(q_coords_mask)] = cycle_avg_coords[q_coords_mask][q_reorder]
+@@ -118,4 +118,4 @@ def construct_conformers(data, model):
+         # rotate
+-        new_pos_Sx_2 = torch.matmul(H_XY.unsqueeze(0), new_pos_Sx.unsqueeze(-1)).squeeze(-1)
+-        new_pos_Sy_2 = torch.matmul(H_YX.unsqueeze(0), new_pos_Sy.unsqueeze(-1)).squeeze(-1)
++        new_pos_Sx_2 = torch.matmul(H_XY.to(device).unsqueeze(0), new_pos_Sx.unsqueeze(-1)).squeeze(-1)
++        new_pos_Sy_2 = torch.matmul(H_YX.to(device).unsqueeze(0), new_pos_Sy.unsqueeze(-1)).squeeze(-1)
+ 
+@@ -123,3 +123,3 @@ def construct_conformers(data, model):
+         new_p_Y = new_pos_Sx_2[Sx == y_index]
+-        transform_matrix = torch.diag(torch.tensor([-1., -1., 1.])).unsqueeze(0).unsqueeze(0)
++        transform_matrix = torch.diag(torch.tensor([-1., -1., 1.])).unsqueeze(0).unsqueeze(0).to(device)
+         new_pos_Sy_3 = torch.matmul(transform_matrix, new_pos_Sy_2.unsqueeze(-1)).squeeze(-1) + new_p_Y
+@@ -129,3 +129,3 @@ def construct_conformers(data, model):
+                                   p_idx, q_idx, x_index, y_index, new_pos_Sx_2, new_pos_Sy_3, new_p_Y)
+-        new_pos_Sx_3 = torch.matmul(H_gamma.unsqueeze(0), new_pos_Sx_2.unsqueeze(-1)).squeeze(-1)
++        new_pos_Sx_3 = torch.matmul(H_gamma.to(device).unsqueeze(0), new_pos_Sx_2.unsqueeze(-1)).squeeze(-1)
+ 
+@@ -213,4 +213,4 @@ def smooth_cycle_coords(model, cycle_indices, new_pos, dihedral_pairs, cycle_sta
+         # rotate
+-        new_pos_Sx_2 = [torch.matmul(H_XY[i].unsqueeze(0), new_pos_Sx[i].unsqueeze(-1)).squeeze(-1) for i in range(cycle_len)]
+-        new_pos_Sy_2 = [torch.matmul(H_YX[i].unsqueeze(0), new_pos_Sy[i].unsqueeze(-1)).squeeze(-1) for i in range(cycle_len)]
++        new_pos_Sx_2 = [torch.matmul(H_XY[i].to(device).unsqueeze(0), new_pos_Sx[i].unsqueeze(-1)).squeeze(-1) for i in range(cycle_len)]
++        new_pos_Sy_2 = [torch.matmul(H_YX[i].to(device).unsqueeze(0), new_pos_Sy[i].unsqueeze(-1)).squeeze(-1) for i in range(cycle_len)]
+ 
+@@ -220,3 +220,3 @@ def smooth_cycle_coords(model, cycle_indices, new_pos, dihedral_pairs, cycle_sta
+             new_p_Y = new_pos_Sx_2[i][Sx_cycle[i] == y_indices[i]].squeeze(-1)
+-            transform_matrix = torch.diag(torch.tensor([-1., -1., 1.])).unsqueeze(0).unsqueeze(0)
++            transform_matrix = torch.diag(torch.tensor([-1., -1., 1.]).to(device)).unsqueeze(0).unsqueeze(0)
+             new_pos_Sy_3 = torch.matmul(transform_matrix, new_pos_Sy_2[i].unsqueeze(-1)).squeeze(-1) + new_p_Y
+@@ -227,3 +227,3 @@ def smooth_cycle_coords(model, cycle_indices, new_pos, dihedral_pairs, cycle_sta
+                                       pairs[i][1], new_pos_Sx_2[i], new_pos_Sy_3, new_p_Y)
+-            new_pos_Sx_3 = torch.matmul(H_gamma.unsqueeze(0), new_pos_Sx_2[i].unsqueeze(-1)).squeeze(-1)
++            new_pos_Sx_3 = torch.matmul(H_gamma.to(device).unsqueeze(0), new_pos_Sx_2[i].unsqueeze(-1)).squeeze(-1)
+ 
+@@ -241,3 +241,3 @@ def smooth_cycle_coords(model, cycle_indices, new_pos, dihedral_pairs, cycle_sta
+         else:
+-            cycle_mask = torch.ones([cycle_pos.size(0), cycle_pos.size(1)])
++            cycle_mask = torch.ones([cycle_pos.size(0), cycle_pos.size(1)]).to(device)
+             for i in range(cycle_len):
+@@ -370,3 +370,3 @@ def calculate_gamma(n_model_confs, dihedral_mask, c_ij, v_star, Sx, Sy, p_idx, q
+     XYTi_XYZj_curr_sin, XYTi_XYZj_curr_cos = batch_dihedrals(pT_prime[pT_idx], qX, pY_prime, qZ_translated[qZ_idx])
+-    A_ij = build_A_matrix_inf(XYTi_XYZj_curr_sin, XYTi_XYZj_curr_cos, n_model_confs) * dihedral_mask.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
++    A_ij = build_A_matrix_inf(XYTi_XYZj_curr_sin, XYTi_XYZj_curr_cos, n_model_confs).to(device) * dihedral_mask.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+ 
+@@ -375,3 +375,3 @@ def calculate_gamma(n_model_confs, dihedral_mask, c_ij, v_star, Sx, Sy, p_idx, q
+     determinants = torch.det(A_curr) + 1e-10
+-    A_curr_inv_ = A_curr.view(n_model_confs, 4)[:, [3, 1, 2, 0]] * torch.tensor([[1., -1., -1., 1.]])
++    A_curr_inv_ = A_curr.view(n_model_confs, 4)[:, [3, 1, 2, 0]] * torch.tensor([[1., -1., -1., 1.]]).to(device)
+     A_curr_inv = (A_curr_inv_ / determinants.unsqueeze(-1)).view(n_model_confs, 2, 2)
+@@ -384,2 +384,3 @@ def calculate_gamma(n_model_confs, dihedral_mask, c_ij, v_star, Sx, Sy, p_idx, q
+ 
++    # cpu tensor ....
+     return H_gamma
+diff --git a/model/model.py b/model/model.py
+index 56ba621..15ece32 100644
+--- a/model/model.py
++++ b/model/model.py
+@@ -34,3 +34,3 @@ class GeoMol(nn.Module):
+                        hidden_dim=self.model_dim, depth=hyperparams['gnn1']['depth'],
+-                       n_layers=hyperparams['gnn1']['n_layers'])
++                       n_layers=hyperparams['gnn1']['n_layers']).to(self.device)
+         self.gnn2 = GNN(node_dim=num_node_features + self.random_vec_dim,
+@@ -38,3 +38,3 @@ class GeoMol(nn.Module):
+                         hidden_dim=self.model_dim, depth=hyperparams['gnn2']['depth'],
+-                        n_layers=hyperparams['gnn2']['n_layers'])
++                        n_layers=hyperparams['gnn2']['n_layers']).to(self.device)
+         if hyperparams['global_transformer']:
+@@ -42,3 +42,3 @@ class GeoMol(nn.Module):
+                                                         dim_feedforward=self.model_dim * 2,
+-                                                        dropout=0.0, activation='relu')
++                                                        dropout=0.0, activation='relu').to(self.device)
+         self.encoder = TransformerEncoderLayer(d_model=self.model_dim * 2,
+@@ -46,13 +46,13 @@ class GeoMol(nn.Module):
+                                                dim_feedforward=self.model_dim * 3,
+-                                               dropout=0.0, activation='relu')
++                                               dropout=0.0, activation='relu').to(self.device)
+ 
+-        self.coord_pred = MLP(in_dim=self.model_dim * 2, out_dim=3, num_layers=hyperparams['coord_pred']['n_layers'])
+-        self.d_mlp = MLP(in_dim=self.model_dim * 2, out_dim=1, num_layers=hyperparams['d_mlp']['n_layers'])
++        self.coord_pred = MLP(in_dim=self.model_dim * 2, out_dim=3, num_layers=hyperparams['coord_pred']['n_layers']).to(self.device)
++        self.d_mlp = MLP(in_dim=self.model_dim * 2, out_dim=1, num_layers=hyperparams['d_mlp']['n_layers']).to(self.device)
+ 
+-        self.h_mol_mlp = MLP(in_dim=self.model_dim, out_dim=self.model_dim, num_layers=hyperparams['h_mol_mlp']['n_layers'])
++        self.h_mol_mlp = MLP(in_dim=self.model_dim, out_dim=self.model_dim, num_layers=hyperparams['h_mol_mlp']['n_layers']).to(self.device)
+         if self.random_alpha:
+-            self.alpha_mlp = MLP(in_dim=self.model_dim * 3 + self.random_vec_dim, out_dim=1, num_layers=hyperparams['alpha_mlp']['n_layers'])
++            self.alpha_mlp = MLP(in_dim=self.model_dim * 3 + self.random_vec_dim, out_dim=1, num_layers=hyperparams['alpha_mlp']['n_layers']).to(self.device)
+         else:
+-            self.alpha_mlp = MLP(in_dim=self.model_dim * 3, out_dim=1, num_layers=hyperparams['alpha_mlp']['n_layers'])
+-        self.c_mlp = MLP(in_dim=self.model_dim * 4, out_dim=1, num_layers=hyperparams['c_mlp']['n_layers'])
++            self.alpha_mlp = MLP(in_dim=self.model_dim * 3, out_dim=1, num_layers=hyperparams['alpha_mlp']['n_layers']).to(self.device)
++        self.c_mlp = MLP(in_dim=self.model_dim * 4, out_dim=1, num_layers=hyperparams['c_mlp']['n_layers']).to(self.device)
+ 
+@@ -75,2 +75,3 @@ class GeoMol(nn.Module):
+ 
++        data.to(self.device)
+         if inference:
